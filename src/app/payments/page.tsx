@@ -218,7 +218,6 @@ export default function PaymentsPage() {
     const totalFee = monthlyFee * availableMonths.length;
     const paidAmount = getPaidAmount(prefect);
 
-    // A full-fee payment means every month is paid.
     if (totalFee > 0 && paidAmount >= totalFee) {
       return true;
     }
@@ -244,18 +243,22 @@ export default function PaymentsPage() {
 
     try {
       if (isPaid) {
-        // Do not delete a month when the prefect has already paid the
-        // full amount through a lump-sum record.
-        const totalFee = monthlyFee * availableMonths.length;
+        // Delete only the selected month's payment.
+        // Other paid months remain unchanged.
+        const existingPayment = payments[paymentId];
 
-        if (getPaidAmount(prefect) >= totalFee) {
+        if (!existingPayment || existingPayment.status !== "Paid") {
           setPaymentError(
-            "This prefect has completed the full payment. Do not undo an individual month here."
+            "The payment record for this month could not be found. Please refresh."
           );
           return;
         }
 
         await deleteDoc(doc(db, "payments", paymentId));
+
+        setPaymentMessage(
+          `${prefect.name}: ${selectedMonth} payment has been undone.`
+        );
       } else {
         const batch = writeBatch(db);
 
@@ -271,6 +274,10 @@ export default function PaymentsPage() {
         });
 
         await batch.commit();
+
+        setPaymentMessage(
+          `${prefect.name}: ${selectedMonth} payment recorded successfully.`
+        );
       }
     } catch (error) {
       console.error("Failed to update payment:", error);
@@ -524,6 +531,7 @@ export default function PaymentsPage() {
                       );
 
                       const isPaid = isMonthPaid(prefect, selectedMonth);
+
                       const isFullPaid =
                         getPaidAmount(prefect) >=
                         monthlyFee * availableMonths.length;
@@ -541,13 +549,19 @@ export default function PaymentsPage() {
                           <td className="px-4 py-3 text-slate-500">
                             {index + 1}
                           </td>
+
                           <td className="px-4 py-3 font-medium text-slate-800">
                             {prefect.name}
                           </td>
+
                           <td className="px-4 py-3">Form {prefect.form}</td>
+
                           <td className="px-4 py-3">{prefect.className}</td>
+
                           <td className="px-4 py-3">{selectedMonth}</td>
+
                           <td className="px-4 py-3">{money(monthlyFee)}</td>
+
                           <td className="px-4 py-3">
                             {isPaid ? (
                               <span className="rounded-full bg-green-100 px-3 py-1 text-xs font-semibold text-green-700">
@@ -565,7 +579,11 @@ export default function PaymentsPage() {
                               <div className="flex flex-wrap gap-2">
                                 <button
                                   onClick={() => togglePayment(prefect)}
-                                  disabled={isSaving || savingPayment !== null || isFullPaid}
+                                  disabled={
+                                    isSaving ||
+                                    savingPayment !== null ||
+                                    (!isPaid && isFullPaid)
+                                  }
                                   className={`rounded-lg px-3 py-2 text-xs font-semibold disabled:opacity-50 ${
                                     isPaid
                                       ? "bg-red-100 text-red-700 hover:bg-red-200"
@@ -581,7 +599,11 @@ export default function PaymentsPage() {
 
                                 <button
                                   onClick={() => settleFullFee(prefect)}
-                                  disabled={isSaving || savingPayment !== null || isFullPaid}
+                                  disabled={
+                                    isSaving ||
+                                    savingPayment !== null ||
+                                    isFullPaid
+                                  }
                                   className="rounded-lg bg-blue-600 px-3 py-2 text-xs font-semibold text-white hover:bg-blue-700 disabled:opacity-50"
                                 >
                                   {isFullPaid ? "Fully Paid" : "Settle Full Fee"}
