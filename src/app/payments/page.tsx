@@ -243,8 +243,6 @@ export default function PaymentsPage() {
 
     try {
       if (isPaid) {
-        // Delete only the selected month's payment.
-        // Other paid months remain unchanged.
         const existingPayment = payments[paymentId];
 
         if (!existingPayment || existingPayment.status !== "Paid") {
@@ -352,6 +350,58 @@ export default function PaymentsPage() {
       console.error("Failed to settle full fee:", error);
       setPaymentError(
         "Full payment could not be recorded. Please check your login and Firestore rules."
+      );
+    } finally {
+      setSavingPayment(null);
+    }
+  }
+
+  // NEW: Undo all payment records for one prefect across available months.
+  async function undoFullSettlement(prefect: Prefect) {
+    if (!isStaff || !user) return;
+
+    const confirmed = window.confirm(
+      `WARNING!\n\nAre you sure you want to undo ALL payment records for ${prefect.name} (Form ${prefect.form})?\n\nAll months from ${availableMonths[0]} to ${availableMonths[availableMonths.length - 1]} will become UNPAID.\n\nThis includes monthly payments recorded before Full Settlement.\n\nThis action cannot be undone automatically.`
+    );
+
+    if (!confirmed) return;
+
+    const savingId = `undo_full_${prefect.form}_${prefect.name}`;
+
+    setSavingPayment(savingId);
+    setPaymentError("");
+    setPaymentMessage("");
+
+    try {
+      const batch = writeBatch(db);
+
+      const prefectRecords = Object.entries(payments).filter(
+        ([, payment]) =>
+          payment.prefectName === prefect.name &&
+          payment.form === prefect.form &&
+          availableMonths.includes(payment.month)
+      );
+
+      if (prefectRecords.length === 0) {
+        setPaymentMessage(
+          `${prefect.name}: no payment records were found to undo.`
+        );
+        return;
+      }
+
+      for (const [paymentId] of prefectRecords) {
+        batch.delete(doc(db, "payments", paymentId));
+      }
+
+      await batch.commit();
+
+      setPaymentMessage(
+        `${prefect.name}: all payment records from ${availableMonths[0]} to ${availableMonths[availableMonths.length - 1]} have been removed. All months are now Unpaid.`
+      );
+    } catch (error) {
+      console.error("Failed to undo full settlement:", error);
+      setPaymentError(
+        "Full settlement could not be undone. Please check your login and Firestore rules."
       );
     } finally {
       setSavingPayment(null);
@@ -508,7 +558,7 @@ export default function PaymentsPage() {
               </p>
             ) : (
               <div className="overflow-x-auto">
-                <table className="w-full min-w-[1050px] text-left text-sm">
+                <table className="w-full min-w-[1200px] text-left text-sm">
                   <thead className="bg-slate-100 text-slate-600">
                     <tr>
                       <th className="px-4 py-3">No.</th>
@@ -539,7 +589,9 @@ export default function PaymentsPage() {
                       const isSaving =
                         savingPayment === paymentId ||
                         savingPayment ===
-                          `full_${prefect.form}_${prefect.name}`;
+                          `full_${prefect.form}_${prefect.name}` ||
+                        savingPayment ===
+                          `undo_full_${prefect.form}_${prefect.name}`;
 
                       return (
                         <tr
@@ -608,6 +660,21 @@ export default function PaymentsPage() {
                                 >
                                   {isFullPaid ? "Fully Paid" : "Settle Full Fee"}
                                 </button>
+
+                                {isFullPaid && (
+                                  <button
+                                    onClick={() => undoFullSettlement(prefect)}
+                                    disabled={
+                                      isSaving || savingPayment !== null
+                                    }
+                                    className="rounded-lg bg-red-600 px-3 py-2 text-xs font-semibold text-white hover:bg-red-700 disabled:opacity-50"
+                                  >
+                                    {savingPayment ===
+                                    `undo_full_${prefect.form}_${prefect.name}`
+                                      ? "Undoing..."
+                                      : "Undo Full Settlement"}
+                                  </button>
+                                )}
                               </div>
                             </td>
                           )}
