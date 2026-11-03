@@ -572,7 +572,7 @@ export default function PaymentsPage() {
                     </tr>
                   </thead>
 
-                  <tbody className="divide-y divide-slate-100">
+                  <tbody className="divide-y divide-slate-100 text-slate-800">
                     {filteredPrefects.map((prefect, index) => {
                       const paymentId = getPaymentId(
                         prefect.name,
